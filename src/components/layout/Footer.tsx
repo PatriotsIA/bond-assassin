@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { BrandMark } from '../brand/Brand'
 import { cn } from '../../lib/cn'
+import { CONTACT_EMAIL } from '../../config/contact'
 
 const disclaimer =
   'Political advertising paid for by Patriots for Action PAC • Dan Rogers, Treasurer • 1000 S. Jefferson St., Amarillo, TX 79101 • 806-622-1334'
@@ -53,6 +54,12 @@ export function Footer() {
               <NavLink to="/about" className={linkClass}>
                 About & Support
               </NavLink>
+              <NavLink to="/privacy" className={linkClass}>
+                Privacy
+              </NavLink>
+              <NavLink to="/terms" className={linkClass}>
+                Terms
+              </NavLink>
             </div>
           </div>
 
@@ -61,8 +68,8 @@ export function Footer() {
               Contact
             </div>
             <div className="mt-3 grid gap-2 text-sm text-patriot-white/80">
-              <a className="hover:text-patriot-white" href="mailto:dan@patriotsinaction.com">
-                dan@patriotsinaction.com
+              <a className="hover:text-patriot-white" href={`mailto:${CONTACT_EMAIL}`}>
+                {CONTACT_EMAIL}
               </a>
               <a className="hover:text-patriot-white" href="tel:+18066221334">
                 806-622-1334

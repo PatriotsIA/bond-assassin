@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { Link } from 'react-router-dom'
 import { ArrowRight, PhoneCall } from 'lucide-react'
 import { siteCopy } from '../content/siteCopy'
 import { Reveal } from '../components/motion/Reveal'
@@ -12,6 +13,8 @@ import { Input } from '../components/ui/Input'
 import { Textarea } from '../components/ui/Textarea'
 import { Select } from '../components/ui/Select'
 import { Button } from '../components/ui/Button'
+import { submitPlatformForm } from '../lib/platformApi'
+import { EnSpotSmsOptInLabel } from '../components/compliance/EnSpotSmsOptInLabel'
 
 type RequestHelpForm = {
   name: string
@@ -24,6 +27,8 @@ type RequestHelpForm = {
   phone: string
   email: string
   connected: 'Yes' | 'No' | 'Not sure' | ''
+  agreePrivacyPolicy: boolean
+  smsConsent: boolean
 }
 
 export function RequestHelpPage() {
@@ -39,18 +44,21 @@ export function RequestHelpPage() {
       phone: '',
       email: '',
       connected: '',
+      agreePrivacyPolicy: false,
+      smsConsent: false,
     }),
     [],
   )
 
   const [form, setForm] = useState<RequestHelpForm>(empty)
   const [errors, setErrors] = useState<Partial<Record<keyof RequestHelpForm, string>>>({})
+  const [submitting, setSubmitting] = useState(false)
 
   function validateEmail(email: string) {
     return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email.trim())
   }
 
-  function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     const nextErrors: Partial<Record<keyof RequestHelpForm, string>> = {}
     if (!form.name.trim()) nextErrors.name = 'Required'
@@ -59,12 +67,35 @@ export function RequestHelpPage() {
     if (!form.email.trim()) nextErrors.email = 'Required'
     else if (!validateEmail(form.email)) nextErrors.email = 'Enter a valid email'
     if (!form.need.trim()) nextErrors.need = 'Tell us what help you need most'
+    else if (form.need.trim().length < 10) nextErrors.need = 'Please add a bit more detail (at least 10 characters).'
+    if (!form.agreePrivacyPolicy) nextErrors.agreePrivacyPolicy = 'Required'
+    if (form.phone.trim() && !form.smsConsent) nextErrors.smsConsent = 'Required when a phone number is provided'
 
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length) return
 
-    toast.success('Request received. We’ll follow up within 48 hours.')
-    setForm(empty)
+    setSubmitting(true)
+    try {
+      await submitPlatformForm('request-help', {
+        name: form.name.trim(),
+        county: form.county.trim(),
+        entity: form.entity.trim(),
+        email: form.email.trim(),
+        need: form.need.trim(),
+        ...(form.amount.trim() ? { amount: form.amount.trim() } : {}),
+        ...(form.electionDate.trim() ? { electionDate: form.electionDate.trim() } : {}),
+        ...(form.status.trim() ? { status: form.status.trim() } : {}),
+        ...(form.phone.trim() ? { phone: form.phone.trim(), smsConsent: true } : {}),
+        ...(form.connected ? { connected: form.connected } : {}),
+        agreePrivacyPolicy: true,
+      })
+      toast.success('Request received — our team gets an email with your request and will follow up within 48 hours.')
+      setForm(empty)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Something went wrong.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -216,10 +247,67 @@ export function RequestHelpPage() {
                 </Select>
               </Field>
 
+              <div className="md:col-span-2">
+                <label className="flex items-start gap-3 rounded-xl border border-patriot-border bg-patriot-bgSoft px-4 py-3 text-sm text-patriot-text">
+                  <input
+                    type="checkbox"
+                    checked={form.agreePrivacyPolicy}
+                    onChange={(e) => setForm((s) => ({ ...s, agreePrivacyPolicy: e.target.checked }))}
+                    className="mt-1 h-4 w-4 accent-patriot-blue"
+                  />
+                  <span>
+                    I have read and agree to the{' '}
+                    <Link
+                      className="font-semibold text-patriot-blue underline decoration-patriot-blue/30 underline-offset-2"
+                      to="/privacy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Privacy Policy
+                    </Link>{' '}
+                    and{' '}
+                    <Link
+                      className="font-semibold text-patriot-blue underline decoration-patriot-blue/30 underline-offset-2"
+                      to="/terms"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Terms &amp; Conditions
+                    </Link>
+                    .
+                  </span>
+                </label>
+                {errors.agreePrivacyPolicy ? (
+                  <div className="mt-2 text-xs font-semibold text-patriot-red">{errors.agreePrivacyPolicy}</div>
+                ) : null}
+              </div>
+
+              {form.phone.trim() ? (
+                <div className="md:col-span-2">
+                  <label className="flex items-start gap-3 rounded-xl border border-patriot-border bg-patriot-bgSoft px-4 py-3 text-sm text-patriot-text">
+                    <input
+                      type="checkbox"
+                      checked={form.smsConsent}
+                      onChange={(e) => setForm((s) => ({ ...s, smsConsent: e.target.checked }))}
+                      className="mt-1 h-4 w-4 accent-patriot-blue"
+                    />
+                    <span>
+                      <EnSpotSmsOptInLabel
+                        organizationName="Patriots for Action PAC"
+                        purposePhrase="informational and donation-related"
+                      />
+                    </span>
+                  </label>
+                  {errors.smsConsent ? (
+                    <div className="mt-2 text-xs font-semibold text-patriot-red">{errors.smsConsent}</div>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-xs text-patriot-muted">{siteCopy.requestHelp.followUp}</div>
-                <Button type="submit" variant="red">
-                  Submit request <ArrowRight className="h-4 w-4" />
+                <Button type="submit" variant="red" disabled={submitting}>
+                  {submitting ? 'Sending…' : 'Submit request'} <ArrowRight className="h-4 w-4" />
                 </Button>
               </div>
             </form>

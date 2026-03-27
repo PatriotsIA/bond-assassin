@@ -3,6 +3,7 @@ import { siteCopy } from '../content/siteCopy'
 import { Reveal } from '../components/motion/Reveal'
 import { Card, CardGlow } from '../components/ui/Card'
 import { LinkButton } from '../components/ui/LinkButton'
+import { CONTACT_EMAIL } from '../config/contact'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Section } from '../components/ui/Section'
 
@@ -122,8 +123,8 @@ export function AboutSupportPage() {
                   Contact
                 </div>
                 <div className="mt-3 grid gap-2 text-sm text-patriot-text">
-                  <a className="hover:underline" href="mailto:dan@patriotsinaction.com">
-                    dan@patriotsinaction.com
+                  <a className="hover:underline" href={`mailto:${CONTACT_EMAIL}`}>
+                    {CONTACT_EMAIL}
                   </a>
                   <a className="hover:underline" href="tel:+18066221334">
                     806-622-1334

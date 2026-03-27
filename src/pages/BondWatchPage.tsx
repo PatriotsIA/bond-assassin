@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { Link } from 'react-router-dom'
 import { ArrowRight, Bell, ClipboardList, Search } from 'lucide-react'
 import { siteCopy } from '../content/siteCopy'
 import { Reveal } from '../components/motion/Reveal'
@@ -13,6 +14,8 @@ import { Textarea } from '../components/ui/Textarea'
 import { Select } from '../components/ui/Select'
 import { Button } from '../components/ui/Button'
 import { useHashScroll } from '../lib/useHashScroll'
+import { submitPlatformForm } from '../lib/platformApi'
+import { EnSpotSmsOptInLabel } from '../components/compliance/EnSpotSmsOptInLabel'
 
 type SubmitBondForm = {
   county: string
@@ -22,6 +25,7 @@ type SubmitBondForm = {
   name: string
   email: string
   details: string
+  agreePrivacyPolicy: boolean
 }
 
 type AlertsForm = {
@@ -29,6 +33,8 @@ type AlertsForm = {
   name: string
   email: string
   phone: string
+  agreePrivacyPolicy: boolean
+  smsConsent: boolean
 }
 
 const countySuggestions = [
@@ -63,6 +69,7 @@ export function BondWatchPage() {
       name: '',
       email: '',
       details: '',
+      agreePrivacyPolicy: false,
     }),
     [],
   )
@@ -73,6 +80,8 @@ export function BondWatchPage() {
       name: '',
       email: '',
       phone: '',
+      agreePrivacyPolicy: false,
+      smsConsent: false,
     }),
     [],
   )
@@ -83,12 +92,14 @@ export function BondWatchPage() {
     {},
   )
   const [alertsErrors, setAlertsErrors] = useState<Partial<Record<keyof AlertsForm, string>>>({})
+  const [submittingBond, setSubmittingBond] = useState(false)
+  const [submittingAlerts, setSubmittingAlerts] = useState(false)
 
   function validateEmail(email: string) {
     return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email.trim())
   }
 
-  function onSubmitBond(e: React.FormEvent) {
+  async function onSubmitBond(e: React.FormEvent) {
     e.preventDefault()
     const nextErrors: Partial<Record<keyof SubmitBondForm, string>> = {}
     if (!submit.county.trim()) nextErrors.county = 'Required'
@@ -96,27 +107,61 @@ export function BondWatchPage() {
     if (!submit.name.trim()) nextErrors.name = 'Required'
     if (!submit.email.trim()) nextErrors.email = 'Required'
     else if (!validateEmail(submit.email)) nextErrors.email = 'Enter a valid email'
+    if (!submit.agreePrivacyPolicy) nextErrors.agreePrivacyPolicy = 'Required'
 
     setSubmitErrors(nextErrors)
     if (Object.keys(nextErrors).length) return
 
-    toast.success('Submitted. We’ll review and verify the election.')
-    setSubmit(emptySubmit)
+    setSubmittingBond(true)
+    try {
+      await submitPlatformForm('bond-watch-submit', {
+        county: submit.county.trim(),
+        entity: submit.entity.trim(),
+        name: submit.name.trim(),
+        email: submit.email.trim(),
+        ...(submit.amount.trim() ? { amount: submit.amount.trim() } : {}),
+        ...(submit.electionDate.trim() ? { electionDate: submit.electionDate.trim() } : {}),
+        ...(submit.details.trim() ? { details: submit.details.trim() } : {}),
+        agreePrivacyPolicy: true,
+      })
+      toast.success('Submitted. We’ll review and verify the election — our team receives an email with your report.')
+      setSubmit(emptySubmit)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Something went wrong.')
+    } finally {
+      setSubmittingBond(false)
+    }
   }
 
-  function onSubmitAlerts(e: React.FormEvent) {
+  async function onSubmitAlerts(e: React.FormEvent) {
     e.preventDefault()
     const nextErrors: Partial<Record<keyof AlertsForm, string>> = {}
     if (!alerts.county.trim()) nextErrors.county = 'Required'
     if (!alerts.name.trim()) nextErrors.name = 'Required'
     if (!alerts.email.trim()) nextErrors.email = 'Required'
     else if (!validateEmail(alerts.email)) nextErrors.email = 'Enter a valid email'
+    if (!alerts.agreePrivacyPolicy) nextErrors.agreePrivacyPolicy = 'Required'
+    if (alerts.phone.trim() && !alerts.smsConsent) nextErrors.smsConsent = 'Required when a phone number is provided'
 
     setAlertsErrors(nextErrors)
     if (Object.keys(nextErrors).length) return
 
-    toast.success('You’re signed up for alerts.')
-    setAlerts(emptyAlerts)
+    setSubmittingAlerts(true)
+    try {
+      await submitPlatformForm('bond-alert-signup', {
+        county: alerts.county.trim(),
+        name: alerts.name.trim(),
+        email: alerts.email.trim(),
+        ...(alerts.phone.trim() ? { phone: alerts.phone.trim(), smsConsent: true } : {}),
+        agreePrivacyPolicy: true,
+      })
+      toast.success('You’re signed up for alerts — our team receives an email with your signup.')
+      setAlerts(emptyAlerts)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Something went wrong.')
+    } finally {
+      setSubmittingAlerts(false)
+    }
   }
 
   return (
@@ -185,8 +230,8 @@ export function BondWatchPage() {
                 Database coming online.
               </div>
               <div className="mt-3 text-sm leading-relaxed text-patriot-text">
-                This build includes the full structure + forms. Wire a data source later (CSV,
-                Airtable, API) and this section becomes a live tracker.
+                Wire a data source later (CSV, Airtable, public content API) and this section becomes a live tracker.
+                Bond Watch form submissions already post to the Patriots Platform API.
               </div>
               <div className="mt-6 inline-flex items-center gap-2 rounded-lg border border-patriot-border bg-patriot-bgSoft px-3 py-2 text-xs text-patriot-muted">
                 <ClipboardList className="h-4 w-4" />
@@ -260,12 +305,47 @@ export function BondWatchPage() {
                 />
               </Field>
 
+              <div>
+                <label className="flex items-start gap-3 rounded-xl border border-patriot-border bg-patriot-bgSoft px-4 py-3 text-sm text-patriot-text">
+                  <input
+                    type="checkbox"
+                    checked={submit.agreePrivacyPolicy}
+                    onChange={(e) => setSubmit((s) => ({ ...s, agreePrivacyPolicy: e.target.checked }))}
+                    className="mt-1 h-4 w-4 accent-patriot-blue"
+                  />
+                  <span>
+                    I have read and agree to the{' '}
+                    <Link
+                      className="font-semibold text-patriot-blue underline decoration-patriot-blue/30 underline-offset-2"
+                      to="/privacy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Privacy Policy
+                    </Link>{' '}
+                    and{' '}
+                    <Link
+                      className="font-semibold text-patriot-blue underline decoration-patriot-blue/30 underline-offset-2"
+                      to="/terms"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Terms &amp; Conditions
+                    </Link>
+                    .
+                  </span>
+                </label>
+                {submitErrors.agreePrivacyPolicy ? (
+                  <div className="mt-2 text-xs font-semibold text-patriot-red">{submitErrors.agreePrivacyPolicy}</div>
+                ) : null}
+              </div>
+
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-xs text-patriot-muted">
                   We review every submission and add verified elections to the database.
                 </div>
-                <Button type="submit" variant="primary">
-                  Submit election <ArrowRight className="h-4 w-4" />
+                <Button type="submit" variant="primary" disabled={submittingBond}>
+                  {submittingBond ? 'Sending…' : 'Submit election'} <ArrowRight className="h-4 w-4" />
                 </Button>
               </div>
 
@@ -325,12 +405,69 @@ export function BondWatchPage() {
                 </Field>
               </div>
 
+              <div>
+                <label className="flex items-start gap-3 rounded-xl border border-patriot-border bg-patriot-bgSoft px-4 py-3 text-sm text-patriot-text">
+                  <input
+                    type="checkbox"
+                    checked={alerts.agreePrivacyPolicy}
+                    onChange={(e) => setAlerts((s) => ({ ...s, agreePrivacyPolicy: e.target.checked }))}
+                    className="mt-1 h-4 w-4 accent-patriot-blue"
+                  />
+                  <span>
+                    I have read and agree to the{' '}
+                    <Link
+                      className="font-semibold text-patriot-blue underline decoration-patriot-blue/30 underline-offset-2"
+                      to="/privacy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Privacy Policy
+                    </Link>{' '}
+                    and{' '}
+                    <Link
+                      className="font-semibold text-patriot-blue underline decoration-patriot-blue/30 underline-offset-2"
+                      to="/terms"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Terms &amp; Conditions
+                    </Link>
+                    .
+                  </span>
+                </label>
+                {alertsErrors.agreePrivacyPolicy ? (
+                  <div className="mt-2 text-xs font-semibold text-patriot-red">{alertsErrors.agreePrivacyPolicy}</div>
+                ) : null}
+              </div>
+
+              {alerts.phone.trim() ? (
+                <div>
+                  <label className="flex items-start gap-3 rounded-xl border border-patriot-border bg-patriot-bgSoft px-4 py-3 text-sm text-patriot-text">
+                    <input
+                      type="checkbox"
+                      checked={alerts.smsConsent}
+                      onChange={(e) => setAlerts((s) => ({ ...s, smsConsent: e.target.checked }))}
+                      className="mt-1 h-4 w-4 accent-patriot-blue"
+                    />
+                    <span>
+                      <EnSpotSmsOptInLabel
+                        organizationName="Patriots for Action PAC"
+                        purposePhrase="informational and donation-related"
+                      />
+                    </span>
+                  </label>
+                  {alertsErrors.smsConsent ? (
+                    <div className="mt-2 text-xs font-semibold text-patriot-red">{alertsErrors.smsConsent}</div>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-xs text-patriot-muted">
                   We will never share your information. Unsubscribe anytime.
                 </div>
-                <Button type="submit" variant="outline">
-                  Sign up <Bell className="h-4 w-4" />
+                <Button type="submit" variant="outline" disabled={submittingAlerts}>
+                  {submittingAlerts ? 'Sending…' : 'Sign up'} <Bell className="h-4 w-4" />
                 </Button>
               </div>
             </form>

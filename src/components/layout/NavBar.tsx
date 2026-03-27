@@ -5,6 +5,7 @@ import { Menu, X, ArrowRight } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { BrandLockup } from '../brand/Brand'
 import { LinkButton } from '../ui/LinkButton'
+import { CONTACT_EMAIL } from '../../config/contact'
 
 type NavItem = { to: string; label: string }
 
@@ -51,8 +52,8 @@ export function NavBar() {
             <a className="hover:underline" href="tel:+18066221334">
               806-622-1334
             </a>
-            <a className="hover:underline" href="mailto:dan@patriotsinaction.com">
-              dan@patriotsinaction.com
+            <a className="hover:underline" href={`mailto:${CONTACT_EMAIL}`}>
+              {CONTACT_EMAIL}
             </a>
           </div>
         </div>

@@ -189,7 +189,7 @@ export const siteCopy = {
       'Contribute online at PatriotsforAction.org',
       'Join the community at PatriotsInAction.com',
       'Report a bond election in your county using our Bond Watch form',
-      'Contact us directly at dan@patriotsinaction.com or 806-622-1334',
+      'Contact us directly at info@patriotsinaction.com or 806-622-1334',
     ],
     closing: ['They float the bonds.', 'We stop them.'],
   },
