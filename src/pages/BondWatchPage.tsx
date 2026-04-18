@@ -14,7 +14,8 @@ import { Textarea } from '../components/ui/Textarea'
 import { Select } from '../components/ui/Select'
 import { Button } from '../components/ui/Button'
 import { useHashScroll } from '../lib/useHashScroll'
-import { submitPlatformForm } from '../lib/platformApi'
+import { sendEmailJsForm } from '../lib/emailjs'
+import { isPlausibleEmail } from '../lib/validation'
 import { EnSpotSmsOptInLabel } from '../components/compliance/EnSpotSmsOptInLabel'
 
 type SubmitBondForm = {
@@ -95,18 +96,14 @@ export function BondWatchPage() {
   const [submittingBond, setSubmittingBond] = useState(false)
   const [submittingAlerts, setSubmittingAlerts] = useState(false)
 
-  function validateEmail(email: string) {
-    return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email.trim())
-  }
-
-  async function onSubmitBond(e: React.FormEvent) {
+  async function onSubmitBond(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const nextErrors: Partial<Record<keyof SubmitBondForm, string>> = {}
     if (!submit.county.trim()) nextErrors.county = 'Required'
     if (!submit.entity.trim()) nextErrors.entity = 'Required'
     if (!submit.name.trim()) nextErrors.name = 'Required'
     if (!submit.email.trim()) nextErrors.email = 'Required'
-    else if (!validateEmail(submit.email)) nextErrors.email = 'Enter a valid email'
+    else if (!isPlausibleEmail(submit.email)) nextErrors.email = 'Enter a valid email'
     if (!submit.agreePrivacyPolicy) nextErrors.agreePrivacyPolicy = 'Required'
 
     setSubmitErrors(nextErrors)
@@ -114,17 +111,8 @@ export function BondWatchPage() {
 
     setSubmittingBond(true)
     try {
-      await submitPlatformForm('bond-watch-submit', {
-        county: submit.county.trim(),
-        entity: submit.entity.trim(),
-        name: submit.name.trim(),
-        email: submit.email.trim(),
-        ...(submit.amount.trim() ? { amount: submit.amount.trim() } : {}),
-        ...(submit.electionDate.trim() ? { electionDate: submit.electionDate.trim() } : {}),
-        ...(submit.details.trim() ? { details: submit.details.trim() } : {}),
-        agreePrivacyPolicy: true,
-      })
-      toast.success('Submitted. We’ll review and verify the election — our team receives an email with your report.')
+      await sendEmailJsForm(e.currentTarget)
+      toast.success('Submitted. We’ll review and verify the election — our team receives your report by email.')
       setSubmit(emptySubmit)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Something went wrong.')
@@ -133,13 +121,13 @@ export function BondWatchPage() {
     }
   }
 
-  async function onSubmitAlerts(e: React.FormEvent) {
+  async function onSubmitAlerts(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const nextErrors: Partial<Record<keyof AlertsForm, string>> = {}
     if (!alerts.county.trim()) nextErrors.county = 'Required'
     if (!alerts.name.trim()) nextErrors.name = 'Required'
     if (!alerts.email.trim()) nextErrors.email = 'Required'
-    else if (!validateEmail(alerts.email)) nextErrors.email = 'Enter a valid email'
+    else if (!isPlausibleEmail(alerts.email)) nextErrors.email = 'Enter a valid email'
     if (!alerts.agreePrivacyPolicy) nextErrors.agreePrivacyPolicy = 'Required'
     if (alerts.phone.trim() && !alerts.smsConsent) nextErrors.smsConsent = 'Required when a phone number is provided'
 
@@ -148,14 +136,8 @@ export function BondWatchPage() {
 
     setSubmittingAlerts(true)
     try {
-      await submitPlatformForm('bond-alert-signup', {
-        county: alerts.county.trim(),
-        name: alerts.name.trim(),
-        email: alerts.email.trim(),
-        ...(alerts.phone.trim() ? { phone: alerts.phone.trim(), smsConsent: true } : {}),
-        agreePrivacyPolicy: true,
-      })
-      toast.success('You’re signed up for alerts — our team receives an email with your signup.')
+      await sendEmailJsForm(e.currentTarget)
+      toast.success('You’re signed up for alerts — our team receives your signup by email.')
       setAlerts(emptyAlerts)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Something went wrong.')
@@ -231,7 +213,7 @@ export function BondWatchPage() {
               </div>
               <div className="mt-3 text-sm leading-relaxed text-patriot-text">
                 Wire a data source later (CSV, Airtable, public content API) and this section becomes a live tracker.
-                Bond Watch form submissions already post to the Patriots Platform API.
+                Bond Watch form submissions send an email to our team.
               </div>
               <div className="mt-6 inline-flex items-center gap-2 rounded-lg border border-patriot-border bg-patriot-bgSoft px-3 py-2 text-xs text-patriot-muted">
                 <ClipboardList className="h-4 w-4" />
@@ -247,9 +229,39 @@ export function BondWatchPage() {
           <Card>
             <CardGlow />
             <form className="relative grid gap-5" onSubmit={onSubmitBond}>
+              <input type="hidden" name="submission_type" value="bond-watch-submit" />
+              <input
+                type="hidden"
+                name="subject"
+                value="[Bond Assassins] Bond Watch — Submit a bond election"
+              />
+              <input type="hidden" name="from_name" value={submit.name} />
+              <input type="hidden" name="reply_to" value={submit.email} />
+              <input type="hidden" name="from_email" value={submit.email} />
+              <input
+                type="hidden"
+                name="agree_privacy_policy"
+                value={submit.agreePrivacyPolicy ? 'true' : 'false'}
+              />
+              <textarea
+                name="message"
+                hidden
+                readOnly
+                value={[
+                  `Submission type: bond-watch-submit`,
+                  `County: ${submit.county.trim() || '(blank)'}`,
+                  `Entity: ${submit.entity.trim() || '(blank)'}`,
+                  `Bond amount: ${submit.amount.trim() || '(blank)'}`,
+                  `Election date: ${submit.electionDate.trim() || '(blank)'}`,
+                  `Name: ${submit.name.trim() || '(blank)'}`,
+                  `Email: ${submit.email.trim() || '(blank)'}`,
+                  `Details: ${submit.details.trim() || '(blank)'}`,
+                ].join('\n')}
+              />
               <div className="grid gap-5 md:grid-cols-2">
                 <Field label="County" hint="Required" error={submitErrors.county}>
                   <Input
+                    name="county"
                     value={submit.county}
                     onChange={(e) => setSubmit((s) => ({ ...s, county: e.target.value }))}
                     placeholder="e.g., Potter County"
@@ -259,6 +271,7 @@ export function BondWatchPage() {
                 </Field>
                 <Field label="Entity proposing the bond" hint="Required" error={submitErrors.entity}>
                   <Input
+                    name="entity"
                     value={submit.entity}
                     onChange={(e) => setSubmit((s) => ({ ...s, entity: e.target.value }))}
                     placeholder="School district, city, utility district…"
@@ -266,6 +279,7 @@ export function BondWatchPage() {
                 </Field>
                 <Field label="Bond amount (if known)">
                   <Input
+                    name="amount"
                     value={submit.amount}
                     onChange={(e) => setSubmit((s) => ({ ...s, amount: e.target.value }))}
                     placeholder="$125,000,000"
@@ -274,6 +288,7 @@ export function BondWatchPage() {
                 </Field>
                 <Field label="Election date (if known)">
                   <Input
+                    name="electionDate"
                     value={submit.electionDate}
                     onChange={(e) => setSubmit((s) => ({ ...s, electionDate: e.target.value }))}
                     placeholder="May 2026 / 2026-05-02"
@@ -281,6 +296,7 @@ export function BondWatchPage() {
                 </Field>
                 <Field label="Your name" hint="Required" error={submitErrors.name}>
                   <Input
+                    name="name"
                     value={submit.name}
                     onChange={(e) => setSubmit((s) => ({ ...s, name: e.target.value }))}
                     placeholder="Full name"
@@ -289,6 +305,12 @@ export function BondWatchPage() {
                 </Field>
                 <Field label="Your email" hint="Required" error={submitErrors.email}>
                   <Input
+                    name="email"
+                    type="email"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     value={submit.email}
                     onChange={(e) => setSubmit((s) => ({ ...s, email: e.target.value }))}
                     placeholder="you@email.com"
@@ -299,6 +321,7 @@ export function BondWatchPage() {
 
               <Field label="Any additional details">
                 <Textarea
+                  name="details"
                   value={submit.details}
                   onChange={(e) => setSubmit((s) => ({ ...s, details: e.target.value }))}
                   placeholder="Links, meeting dates, documents, what you’ve heard…"
@@ -364,9 +387,34 @@ export function BondWatchPage() {
           <Card>
             <CardGlow />
             <form className="relative grid gap-5" onSubmit={onSubmitAlerts}>
+              <input type="hidden" name="submission_type" value="bond-alert-signup" />
+              <input type="hidden" name="subject" value="[Bond Assassins] Bond Watch — Alert signup" />
+              <input type="hidden" name="from_name" value={alerts.name} />
+              <input type="hidden" name="reply_to" value={alerts.email} />
+              <input type="hidden" name="from_email" value={alerts.email} />
+              <input
+                type="hidden"
+                name="agree_privacy_policy"
+                value={alerts.agreePrivacyPolicy ? 'true' : 'false'}
+              />
+              <input type="hidden" name="sms_consent" value={alerts.smsConsent ? 'true' : 'false'} />
+              <textarea
+                name="message"
+                hidden
+                readOnly
+                value={[
+                  `Submission type: bond-alert-signup`,
+                  `County: ${alerts.county.trim() || '(blank)'}`,
+                  `Name: ${alerts.name.trim() || '(blank)'}`,
+                  `Email: ${alerts.email.trim() || '(blank)'}`,
+                  `Phone: ${alerts.phone.trim() || '(blank)'}`,
+                  `SMS consent: ${alerts.smsConsent ? 'true' : 'false'}`,
+                ].join('\n')}
+              />
               <div className="grid gap-5 md:grid-cols-2">
                 <Field label="County" hint="Required" error={alertsErrors.county}>
                   <Select
+                    name="county"
                     value={alerts.county}
                     onChange={(e) => setAlerts((s) => ({ ...s, county: e.target.value }))}
                   >
@@ -381,6 +429,7 @@ export function BondWatchPage() {
                 </Field>
                 <Field label="Your name" hint="Required" error={alertsErrors.name}>
                   <Input
+                    name="name"
                     value={alerts.name}
                     onChange={(e) => setAlerts((s) => ({ ...s, name: e.target.value }))}
                     placeholder="Full name"
@@ -389,6 +438,12 @@ export function BondWatchPage() {
                 </Field>
                 <Field label="Email" hint="Required" error={alertsErrors.email}>
                   <Input
+                    name="email"
+                    type="email"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     value={alerts.email}
                     onChange={(e) => setAlerts((s) => ({ ...s, email: e.target.value }))}
                     placeholder="you@email.com"
@@ -397,6 +452,7 @@ export function BondWatchPage() {
                 </Field>
                 <Field label="Phone (optional)">
                   <Input
+                    name="phone"
                     value={alerts.phone}
                     onChange={(e) => setAlerts((s) => ({ ...s, phone: e.target.value }))}
                     placeholder="(806) 622-1334"

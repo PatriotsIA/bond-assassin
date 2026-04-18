@@ -13,7 +13,8 @@ import { Input } from '../components/ui/Input'
 import { Textarea } from '../components/ui/Textarea'
 import { Select } from '../components/ui/Select'
 import { Button } from '../components/ui/Button'
-import { submitPlatformForm } from '../lib/platformApi'
+import { sendEmailJsForm } from '../lib/emailjs'
+import { isPlausibleEmail } from '../lib/validation'
 import { EnSpotSmsOptInLabel } from '../components/compliance/EnSpotSmsOptInLabel'
 
 type RequestHelpForm = {
@@ -54,18 +55,14 @@ export function RequestHelpPage() {
   const [errors, setErrors] = useState<Partial<Record<keyof RequestHelpForm, string>>>({})
   const [submitting, setSubmitting] = useState(false)
 
-  function validateEmail(email: string) {
-    return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email.trim())
-  }
-
-  async function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const nextErrors: Partial<Record<keyof RequestHelpForm, string>> = {}
     if (!form.name.trim()) nextErrors.name = 'Required'
     if (!form.county.trim()) nextErrors.county = 'Required'
     if (!form.entity.trim()) nextErrors.entity = 'Required'
     if (!form.email.trim()) nextErrors.email = 'Required'
-    else if (!validateEmail(form.email)) nextErrors.email = 'Enter a valid email'
+    else if (!isPlausibleEmail(form.email)) nextErrors.email = 'Enter a valid email'
     if (!form.need.trim()) nextErrors.need = 'Tell us what help you need most'
     else if (form.need.trim().length < 10) nextErrors.need = 'Please add a bit more detail (at least 10 characters).'
     if (!form.agreePrivacyPolicy) nextErrors.agreePrivacyPolicy = 'Required'
@@ -76,20 +73,8 @@ export function RequestHelpPage() {
 
     setSubmitting(true)
     try {
-      await submitPlatformForm('request-help', {
-        name: form.name.trim(),
-        county: form.county.trim(),
-        entity: form.entity.trim(),
-        email: form.email.trim(),
-        need: form.need.trim(),
-        ...(form.amount.trim() ? { amount: form.amount.trim() } : {}),
-        ...(form.electionDate.trim() ? { electionDate: form.electionDate.trim() } : {}),
-        ...(form.status.trim() ? { status: form.status.trim() } : {}),
-        ...(form.phone.trim() ? { phone: form.phone.trim(), smsConsent: true } : {}),
-        ...(form.connected ? { connected: form.connected } : {}),
-        agreePrivacyPolicy: true,
-      })
-      toast.success('Request received — our team gets an email with your request and will follow up within 48 hours.')
+      await sendEmailJsForm(e.currentTarget)
+      toast.success('Request received — our team gets your request by email and will follow up within 48 hours.')
       setForm(empty)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Something went wrong.')
@@ -157,9 +142,40 @@ export function RequestHelpPage() {
           <Card>
             <CardGlow />
             <form className="relative grid gap-5" onSubmit={onSubmit}>
+              <input type="hidden" name="submission_type" value="request-help" />
+              <input type="hidden" name="subject" value="[Bond Assassins] Request help" />
+              <input type="hidden" name="from_name" value={form.name} />
+              <input type="hidden" name="reply_to" value={form.email} />
+              <input type="hidden" name="from_email" value={form.email} />
+              <input
+                type="hidden"
+                name="agree_privacy_policy"
+                value={form.agreePrivacyPolicy ? 'true' : 'false'}
+              />
+              <input type="hidden" name="sms_consent" value={form.smsConsent ? 'true' : 'false'} />
+              <textarea
+                name="message"
+                hidden
+                readOnly
+                value={[
+                  `Submission type: request-help`,
+                  `Name: ${form.name.trim() || '(blank)'}`,
+                  `County: ${form.county.trim() || '(blank)'}`,
+                  `Entity: ${form.entity.trim() || '(blank)'}`,
+                  `Bond amount: ${form.amount.trim() || '(blank)'}`,
+                  `Election date: ${form.electionDate.trim() || '(blank)'}`,
+                  `Current status: ${form.status.trim() || '(blank)'}`,
+                  `Need: ${form.need.trim() || '(blank)'}`,
+                  `Phone: ${form.phone.trim() || '(blank)'}`,
+                  `Email: ${form.email.trim() || '(blank)'}`,
+                  `Connected: ${form.connected || '(blank)'}`,
+                  `SMS consent: ${form.smsConsent ? 'true' : 'false'}`,
+                ].join('\n')}
+              />
               <div className="grid gap-5 md:grid-cols-2">
                 <Field label="Your name" hint="Required" error={errors.name}>
                   <Input
+                    name="name"
                     value={form.name}
                     onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
                     autoComplete="name"
@@ -167,6 +183,7 @@ export function RequestHelpPage() {
                 </Field>
                 <Field label="County" hint="Required" error={errors.county}>
                   <Input
+                    name="county"
                     value={form.county}
                     onChange={(e) => setForm((s) => ({ ...s, county: e.target.value }))}
                     placeholder="e.g., Potter County"
@@ -174,6 +191,7 @@ export function RequestHelpPage() {
                 </Field>
                 <Field label="Entity proposing the bond" hint="Required" error={errors.entity}>
                   <Input
+                    name="entity"
                     value={form.entity}
                     onChange={(e) => setForm((s) => ({ ...s, entity: e.target.value }))}
                     placeholder="School district, city, utility district…"
@@ -181,6 +199,7 @@ export function RequestHelpPage() {
                 </Field>
                 <Field label="Bond amount">
                   <Input
+                    name="amount"
                     value={form.amount}
                     onChange={(e) => setForm((s) => ({ ...s, amount: e.target.value }))}
                     placeholder="$125,000,000"
@@ -189,6 +208,7 @@ export function RequestHelpPage() {
                 </Field>
                 <Field label="Election date">
                   <Input
+                    name="electionDate"
                     value={form.electionDate}
                     onChange={(e) => setForm((s) => ({ ...s, electionDate: e.target.value }))}
                     placeholder="May 2026 / 2026-05-02"
@@ -196,6 +216,7 @@ export function RequestHelpPage() {
                 </Field>
                 <Field label="Current status">
                   <Input
+                    name="status"
                     value={form.status}
                     onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}
                     placeholder="Just announced, campaign underway, etc."
@@ -203,6 +224,7 @@ export function RequestHelpPage() {
                 </Field>
                 <Field label="Phone number">
                   <Input
+                    name="phone"
                     value={form.phone}
                     onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))}
                     autoComplete="tel"
@@ -210,6 +232,12 @@ export function RequestHelpPage() {
                 </Field>
                 <Field label="Email" hint="Required" error={errors.email}>
                   <Input
+                    name="email"
+                    type="email"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     value={form.email}
                     onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))}
                     autoComplete="email"
@@ -224,6 +252,7 @@ export function RequestHelpPage() {
                 error={errors.need}
               >
                 <Textarea
+                  name="need"
                   value={form.need}
                   onChange={(e) => setForm((s) => ({ ...s, need: e.target.value }))}
                   placeholder="Voter contact, targeting, messaging, records requests, coordination…"
@@ -232,6 +261,7 @@ export function RequestHelpPage() {
 
               <Field label="Connected with your precinct chair/county party?">
                 <Select
+                  name="connected"
                   value={form.connected}
                   onChange={(e) =>
                     setForm((s) => ({
